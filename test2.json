@@ -1,0 +1,181 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Quality Control\n",
+    "\n",
+    "This notebook outlines the quality control (QC) steps for single-cell RNA-seq data using Scanpy. The tutorial covers inspection of QC metrics, including the number of UMIs, number of genes expressed, mitochondrial and ribosomal expression, as well as sex and cell cycle state.\n",
+    "\n",
+    "Authors: Åsa Björklund, Paulo Czarnewski, Susanne Reinsbach, Roy Francis\n",
+    "Published: 05-Feb-2024"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 1. Get Data\n",
+    "\n",
+    "In this tutorial, we will use a set of 8 PBMC 10x datasets from 4 COVID-19 patients and 4 healthy controls. The samples have been subsampled to 1500 cells per sample.\n",
+    "\n",
+    "We will begin by defining our paths and downloading the data if it's not already available."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import os\n",
+    "import urllib.request\n",
+    "\n",
+    "# Set paths for data and results\n",
+    "path_data = \"https://export.uppmax.uu.se/naiss2023-23-3/workshops/workshop-scrnaseq\"\n",
+    "path_covid = \"./data/covid\"\n",
+    "path_results = \"data/covid/results\"\n",
+    "if not os.path.exists(path_covid):\n",
+    "    os.makedirs(path_covid, exist_ok=True)\n",
+    "if not os.path.exists(path_results):\n",
+    "    os.makedirs(path_results, exist_ok=True)\n",
+    "\n",
+    "# List of files to download\n",
+    "file_list = [\n",
+    "    \"normal_pbmc_13.h5\", \"normal_pbmc_14.h5\", \"normal_pbmc_19.h5\", \"normal_pbmc_5.h5\",\n",
+    "    \"ncov_pbmc_15.h5\", \"ncov_pbmc_16.h5\", \"ncov_pbmc_17.h5\", \"ncov_pbmc_1.h5\"\n",
+    "]\n",
+    "\n",
+    "# Download the files if they don't exist\n",
+    "for i in file_list:\n",
+    "    path_file = os.path.join(path_covid, i)\n",
+    "    if not os.path.exists(path_file):\n",
+    "        file_url = os.path.join(path_data, \"covid\", i)\n",
+    "        urllib.request.urlretrieve(file_url, path_file)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2. Collate Data\n",
+    "\n",
+    "We will load the datasets into Scanpy and add metadata before merging them into a single object."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import scanpy as sc\n",
+    "import numpy as np\n",
+    "\n",
+    "# Load datasets\n",
+    "data_cov1 = sc.read_10x_h5(os.path.join(path_covid,'ncov_pbmc_1.h5'))\n",
+    "data_cov15 = sc.read_10x_h5(os.path.join(path_covid,'ncov_pbmc_15.h5'))\n",
+    "data_cov16 = sc.read_10x_h5(os.path.join(path_covid,'ncov_pbmc_16.h5'))\n",
+    "data_cov17 = sc.read_10x_h5(os.path.join(path_covid,'ncov_pbmc_17.h5'))\n",
+    "data_ctrl5 = sc.read_10x_h5(os.path.join(path_covid,'normal_pbmc_5.h5'))\n",
+    "data_ctrl13 = sc.read_10x_h5(os.path.join(path_covid,'normal_pbmc_13.h5'))\n",
+    "data_ctrl14 = sc.read_10x_h5(os.path.join(path_covid,'normal_pbmc_14.h5'))\n",
+    "data_ctrl19 = sc.read_10x_h5(os.path.join(path_covid,'normal_pbmc_19.h5'))\n",
+    "\n",
+    "# Make var_names unique\n",
+    "for data in [data_cov1, data_cov15, data_cov16, data_cov17, data_ctrl5, data_ctrl13, data_ctrl14, data_ctrl19]:\n",
+    "    data.var_names_make_unique()\n",
+    "\n",
+    "# Add metadata\n",
+    "data_cov1.obs['type'] = \"Covid\"\n",
+    "data_cov1.obs['sample'] = \"covid_1\"\n",
+    "data_cov15.obs['type'] = \"Covid\"\n",
+    "data_cov15.obs['sample'] = \"covid_15\"\n",
+    "data_cov16.obs['type'] = \"Covid\"\n",
+    "data_cov16.obs['sample'] = \"covid_16\"\n",
+    "data_cov17.obs['type'] = \"Covid\"\n",
+    "data_cov17.obs['sample'] = \"covid_17\"\n",
+    "data_ctrl5.obs['type'] = \"Ctrl\"\n",
+    "data_ctrl5.obs['sample'] = \"ctrl_5\"\n",
+    "data_ctrl13.obs['type'] = \"Ctrl\"\n",
+    "data_ctrl13.obs['sample'] = \"ctrl_13\"\n",
+    "data_ctrl14.obs['type'] = \"Ctrl\"\n",
+    "data_ctrl14.obs['sample'] = \"ctrl_14\"\n",
+    "data_ctrl19.obs['type'] = \"Ctrl\"\n",
+    "data_ctrl19.obs['sample'] = \"ctrl_19\"\n",
+    "\n",
+    "# Merge datasets into one object\n",
+    "adata = data_cov1.concatenate(data_cov15, data_cov16, data_cov17, data_ctrl5, data_ctrl13, data_ctrl14, data_ctrl19)\n",
+    "\n",
+    "# Delete individual datasets to save memory\n",
+    "del(data_cov1, data_cov15, data_cov16, data_cov17)\n",
+    "del(data_ctrl5, data_ctrl13, data_ctrl14, data_ctrl19)\n",
+    "\n",
+    "# Print summary\n",
+    "print(adata.obs['sample'].value_counts())\n",
+    "adata"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3. Calculate QC\n",
+    "\n",
+    "Next, we calculate quality control metrics such as the percentage of mitochondrial, ribosomal, and hemoglobin gene counts for each cell."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Define mitochondrial, ribosomal, and hemoglobin genes\n",
+    "adata.var['mt'] = adata.var_names.str.startswith('MT-')\n",
+    "adata.var['ribo'] = adata.var_names.str.startswith(('RPS', 'RPL'))\n",
+    "adata.var['hb'] = adata.var_names.str.contains('^HB[^(P|E|S)]')\n",
+    "\n",
+    "# Calculate QC metrics\n",
+    "sc.pp.calculate_qc_metrics(adata, qc_vars=['mt', 'ribo', 'hb'], percent_top=None, log1p=False, inplace=True)\n",
+    "\n",
+    "# Print updated metadata\n",
+    "adata"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 4. Plot QC\n",
+    "\n",
+    "Let's visualize the quality control metrics using violin plots and scatter plots to inspect the distribution of QC metrics across samples."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Plot QC metrics as violin plots\n",
+    "sc.pl.violin(adata, ['n_genes_by_counts', 'total_counts', 'pct_counts_mt', 'pct_counts_ribo', 'pct_counts_hb'], jitter=0.4, groupby='sample', rotation=45)\n",
+    "\n",
+    "# Plot QC metrics as scatter plots\n",
+    "sc.pl.scatter(adata, x='total_counts', y='pct_counts_mt', color='sample')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 5. Filtering\n",
+    "\n",
+    "You may want to filter low-quality cells or genes that are not expressed enough in the data."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+  
